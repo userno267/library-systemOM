@@ -35,7 +35,8 @@ const app = express();
 
 /* ================= Allowed Origins ================= */
 const allowedOrigins = [
-  "http://localhost:5173",
+    "http://localhost:5173",
+  "http://localhost:5174",
   "https://fugitively-untruthful-madalynn.ngrok-free.dev",
   "https://unprogressively-noncognitive-karis.ngrok-free.dev",
   "https://seclusion-stitch-shy.ngrok-free.dev",
@@ -141,6 +142,8 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: [
+        "http://localhost:5173",
+  "http://localhost:5174",
       "https://fugitively-untruthful-madalynn.ngrok-free.dev",//your frontend 1 ngrok
       "https://seclusion-stitch-shy.ngrok-free.dev", // your frontend 2 ngrok
       "https://unprogressively-noncognitive-karis.ngrok-free.dev", // backend LocalTunnel
