@@ -1,5 +1,3 @@
-// src/pages/admin/BorrowManagement.jsx
-
 import { useEffect, useState, useRef } from "react";
 import AdminSidebar from "../../components/AdminSidebar";
 import Select from "react-select";
@@ -35,7 +33,6 @@ export default function ActiveBorrowManagement() {
   const fetchUsers = async () => {
     const res = await fetch(`${baseURL}/api/users?page=1&limit=1000`, { headers });
     const data = await res.json();
-
     setUsers(
       (data.users || []).map((u) => ({
         value: u.id,
@@ -48,7 +45,6 @@ export default function ActiveBorrowManagement() {
   const fetchBooks = async () => {
     const res = await fetch(`${baseURL}/api/books?page=1&limit=1000`, { headers });
     const data = await res.json();
-
     setBooks(
       (data.books || []).map((b) => ({
         value: b.id,
@@ -74,14 +70,10 @@ export default function ActiveBorrowManagement() {
 
       const res = await fetch(
         `${baseURL}/api/admin/active?${params.toString()}`,
-        {
-          headers,
-          signal: abortRef.current.signal,
-        }
+        { headers, signal: abortRef.current.signal }
       );
 
       const data = await res.json();
-
       setBorrows(data.borrows || []);
       setTotalPages(data.totalPages || 1);
     } catch (err) {
@@ -102,7 +94,6 @@ export default function ActiveBorrowManagement() {
       setDebouncedSearch(search);
       setPage(1);
     }, 300);
-
     return () => clearTimeout(t);
   }, [search]);
 
@@ -112,15 +103,10 @@ export default function ActiveBorrowManagement() {
 
   useEffect(() => {
     if (!token) return;
-
     if (!socket.connected) socket.connect();
     socket.auth = { token };
     socket.emit("join", "admins");
-
-    socket.on("borrowUpdate", () => {
-      fetchBorrows(page, debouncedSearch);
-    });
-
+    socket.on("borrowUpdate", () => fetchBorrows(page, debouncedSearch));
     return () => socket.off("borrowUpdate");
   }, [page, debouncedSearch]);
 
@@ -160,6 +146,30 @@ export default function ActiveBorrowManagement() {
     fetchBorrows(page, debouncedSearch);
   };
 
+  // =====================================================
+  // Direct return — admin processes return on the spot
+  // without needing the student to tap on their phone.
+  // Uses the existing /api/admin/return endpoint which
+  // already handles stock updates + wishlist notifications.
+  // =====================================================
+  const directReturn = async (id) => {
+    if (!confirm("Process return directly? This will mark the book as returned immediately.")) return;
+
+    const res = await fetch(`${baseURL}/api/admin/return`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ borrow_id: id }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.message || "Return failed");
+      return;
+    }
+
+    fetchBorrows(page, debouncedSearch);
+  };
+
   const rejectRequest = async (id) => {
     await fetch(`${baseURL}/api/borrows/admin/reject`, {
       method: "POST",
@@ -171,16 +181,11 @@ export default function ActiveBorrowManagement() {
 
   const statusClass = (status) => {
     switch (status) {
-      case "pending_borrow":
-        return "badge yellow";
-      case "borrowed":
-        return "badge blue";
-      case "pending_return":
-        return "badge orange";
-      case "returned":
-        return "badge green";
-      default:
-        return "badge";
+      case "pending_borrow":  return "badge yellow";
+      case "borrowed":        return "badge blue";
+      case "pending_return":  return "badge orange";
+      case "returned":        return "badge green";
+      default:                return "badge";
     }
   };
 
@@ -194,17 +199,27 @@ export default function ActiveBorrowManagement() {
         {/* CREATE */}
         <div className="card">
           <h3>Create Borrow</h3>
-
           <div className="row">
-            <Select options={users} value={selectedUser} onChange={setSelectedUser} placeholder="User" />
-            <Select options={books} value={selectedBook} onChange={setSelectedBook} placeholder="Book" />
-<button
-  className="primary-btn"
-  onClick={handleBorrow}
-  disabled={!selectedUser || !selectedBook}
->
-  ➕ Borrow
-</button>          </div>
+            <Select
+              options={users}
+              value={selectedUser}
+              onChange={setSelectedUser}
+              placeholder="User"
+            />
+            <Select
+              options={books}
+              value={selectedBook}
+              onChange={setSelectedBook}
+              placeholder="Book"
+            />
+            <button
+              className="primary-btn"
+              onClick={handleBorrow}
+              disabled={!selectedUser || !selectedBook}
+            >
+              ➕ Borrow
+            </button>
+          </div>
         </div>
 
         {/* SEARCH + FILTER TOOLBAR */}
@@ -246,7 +261,7 @@ export default function ActiveBorrowManagement() {
                   <th>Book</th>
                   <th>Due</th>
                   <th>Status</th>
-                  <th></th>
+                  <th>Actions</th>
                 </tr>
               </thead>
 
@@ -255,23 +270,67 @@ export default function ActiveBorrowManagement() {
                   <tr key={b.id}>
                     <td>{b.full_name}</td>
                     <td>{b.title}</td>
-                    <td>{b.due_date ? new Date(b.due_date).toLocaleDateString() : "—"}</td>
                     <td>
-                      <span className={statusClass(b.status)}>{b.status}</span>
+                      {b.due_date
+                        ? new Date(b.due_date).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td>
+                      <span className={statusClass(b.status)}>
+                        {b.status.replace(/_/g, " ")}
+                      </span>
                     </td>
 
                     <td className="actions">
+                      {/* Pending borrow — approve or reject */}
                       {b.status === "pending_borrow" && (
                         <>
-                          <button onClick={() => approveBorrow(b.id)}>✔</button>
-                          <button className="danger" onClick={() => rejectRequest(b.id)}>✖</button>
+                          <button
+                            className="action-btn approve"
+                            title="Approve borrow"
+                            onClick={() => approveBorrow(b.id)}
+                          >
+                            ✔ Approve
+                          </button>
+                          <button
+                            className="action-btn danger"
+                            title="Reject"
+                            onClick={() => rejectRequest(b.id)}
+                          >
+                            ✖ Reject
+                          </button>
                         </>
                       )}
 
+                      {/* Currently borrowed — admin can return directly
+                          without waiting for student to tap their phone  */}
+                      {b.status === "borrowed" && (
+                        <button
+                          className="action-btn return"
+                          title="Process return on student's behalf"
+                          onClick={() => directReturn(b.id)}
+                        >
+                          🔁 Return
+                        </button>
+                      )}
+
+                      {/* Pending return — approve or reject */}
                       {b.status === "pending_return" && (
                         <>
-                          <button onClick={() => approveReturn(b.id)}>✔</button>
-                          <button className="danger" onClick={() => rejectRequest(b.id)}>✖</button>
+                          <button
+                            className="action-btn approve"
+                            title="Approve return"
+                            onClick={() => approveReturn(b.id)}
+                          >
+                            ✔ Approve
+                          </button>
+                          <button
+                            className="action-btn danger"
+                            title="Reject"
+                            onClick={() => rejectRequest(b.id)}
+                          >
+                            ✖ Reject
+                          </button>
                         </>
                       )}
                     </td>
@@ -305,11 +364,19 @@ export default function ActiveBorrowManagement() {
           box-shadow: 0 2px 6px rgba(0,0,0,0.05);
         }
 
+        .row {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
         .toolbar {
           display: flex;
           justify-content: space-between;
           gap: 12px;
           margin-bottom: 12px;
+          flex-wrap: wrap;
         }
 
         .search-box {
@@ -320,6 +387,7 @@ export default function ActiveBorrowManagement() {
           padding: 6px 10px;
           flex: 1;
           border: 1px solid #ddd;
+          gap: 6px;
         }
 
         .search-box input {
@@ -328,11 +396,19 @@ export default function ActiveBorrowManagement() {
           flex: 1;
         }
 
+        .filters {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
         .filters button {
           padding: 6px 10px;
           border-radius: 6px;
           border: none;
           background: #eee;
+          cursor: pointer;
+          font-size: 0.8rem;
         }
 
         .filters .active {
@@ -345,70 +421,97 @@ export default function ActiveBorrowManagement() {
           border-collapse: collapse;
         }
 
-        tbody tr:hover {
-          background: #f5f5f5;
-        }
+        tbody tr:hover { background: #f5f5f5; }
 
-        td, th {
-          padding: 10px;
-        }
+        td, th { padding: 10px; text-align: left; }
+
+        th { font-weight: 600; color: #1b5e20; border-bottom: 2px solid #c5e1a5; }
+        td { border-bottom: 1px solid #f0f0f0; }
 
         .badge {
-          padding: 4px 8px;
-          border-radius: 6px;
-          font-size: 12px;
+          padding: 4px 10px;
+          border-radius: 20px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: capitalize;
+          white-space: nowrap;
         }
 
-        .green { background: #c8e6c9; }
-        .yellow { background: #fff9c4; }
-        .blue { background: #bbdefb; }
-        .orange { background: #ffe0b2; }
+        .green  { background: #c8e6c9; color: #1b5e20; }
+        .yellow { background: #fff9c4; color: #f57f17; }
+        .blue   { background: #bbdefb; color: #0d47a1; }
+        .orange { background: #ffe0b2; color: #e65100; }
 
-        .actions button {
+        .actions {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .action-btn {
           border: none;
-          padding: 5px 8px;
+          padding: 5px 10px;
           border-radius: 6px;
-          background: #2e7d32;
-          color: white;
+          font-size: 0.78rem;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: opacity 0.15s;
         }
 
-        .danger {
-          background: #c62828;
-        }
+        .action-btn:hover { opacity: 0.85; }
+
+        .action-btn.approve { background: #2e7d32; color: white; }
+        .action-btn.danger  { background: #c62828; color: white; }
+
+        /* Return button — distinct color so it's clear it's a different action */
+        .action-btn.return  { background: #1565c0; color: white; }
 
         .pagination {
           display: flex;
           justify-content: center;
           gap: 10px;
           margin-top: 12px;
+          align-items: center;
+        }
+
+        .pagination button {
+          background: #2e7d32;
+          color: white;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+
+        .pagination button:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
         }
 
         .primary-btn {
-  background: linear-gradient(135deg, #ee0808, #2e7d32);
-  color: white;
-  border: none;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
+          background: #2e7d32;
+          color: white;
+          border: none;
+          padding: 8px 14px;
+          border-radius: 8px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
 
-.primary-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(46, 125, 50, 0.3);
-}
+        .primary-btn:hover {
+          opacity: 0.9;
+          transform: translateY(-1px);
+        }
 
-.primary-btn:active {
-  transform: scale(0.97);
-  box-shadow: none;
-}
-
-.primary-btn:disabled {
-  background: #c8e6c9;
-  cursor: not-allowed;
-  box-shadow: none;
-}
+        .primary-btn:disabled {
+          background: #c8e6c9;
+          cursor: not-allowed;
+          transform: none;
+        }
       `}</style>
     </>
   );

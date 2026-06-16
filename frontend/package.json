@@ -13,6 +13,7 @@
     "@vitejs/plugin-basic-ssl": "^2.1.4",
     "html5-qrcode": "^2.3.8",
     "pdfjs-dist": "^2.16.105",
+    "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hot-toast": "^2.6.0",

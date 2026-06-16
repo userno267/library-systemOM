@@ -8,6 +8,7 @@ import {
   FaComments,
   FaBars,
   FaSignOutAlt,
+  FaQrcode,
 } from "react-icons/fa";
 import { AuthContext } from "../context/AuthContext";
 
@@ -17,14 +18,21 @@ export default function Sidebar() {
 
   const location = useLocation();
   const navigate = useNavigate();
-  const { logoutUser } = useContext(AuthContext);
+  const { logoutUser, user } = useContext(AuthContext);
+
+  const isAdmin = user?.role === "admin";
 
   const navItems = [
-    { path: "/", icon: <FaHome />, label: "Dashboard" },
+    { path: "/home", icon: <FaHome />, label: "Home" },
     { path: "/BrowseBooks", icon: <FaBookOpen />, label: "Browse Books" },
     { path: "/UserBorrowPage", icon: <FaBook />, label: "Borrowed Books" },
-    { path: "/BrowseEBooks", icon: <FaLaptop />, label: "E-books" },
+    { path: "/BrowseEbooks", icon: <FaLaptop />, label: "E-books" },
     { path: "/SupportChat", icon: <FaComments />, label: "Chat Librarian" },
+    // QR Borrow is only shown to admins
+    ...(isAdmin
+      ? [{ path: "/qr-borrow", icon: <FaQrcode />, label: "QR Borrow Station" }]
+      : []
+    ),
     {
       path: "/logout",
       icon: <FaSignOutAlt />,
@@ -58,17 +66,13 @@ export default function Sidebar() {
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () =>
-      document.removeEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
 
   // ================= NAV CLICK =================
   const handleNavClick = (item) => {
     if (item.action) item.action();
-
-    if (window.innerWidth <= 768) {
-      setOpen(false);
-    }
+    if (window.innerWidth <= 768) setOpen(false);
   };
 
   return (
@@ -85,15 +89,18 @@ export default function Sidebar() {
 
       {/* ================= SIDEBAR ================= */}
       <div ref={sidebarRef} className={`sidebar ${open ? "open" : ""}`}>
-        <div className="logo">LibPortal</div>
+        <div className="logo">
+          LibPortal
+          {isAdmin && (
+            <span className="admin-badge">Admin</span>
+          )}
+        </div>
 
         <ul className="nav-list">
           {navItems.map((item) => (
             <li
               key={item.label}
-              className={
-                location.pathname === item.path ? "active" : ""
-              }
+              className={location.pathname === item.path ? "active" : ""}
             >
               {item.action ? (
                 <button onClick={() => handleNavClick(item)}>
@@ -101,10 +108,7 @@ export default function Sidebar() {
                   <span>{item.label}</span>
                 </button>
               ) : (
-                <Link
-                  to={item.path}
-                  onClick={() => handleNavClick(item)}
-                >
+                <Link to={item.path} onClick={() => handleNavClick(item)}>
                   {item.icon}
                   <span>{item.label}</span>
                 </Link>
@@ -115,7 +119,6 @@ export default function Sidebar() {
       </div>
 
       <style jsx>{`
-        /* ================= TOGGLE ================= */
         .toggle-btn {
           position: fixed;
           top: 15px;
@@ -134,7 +137,6 @@ export default function Sidebar() {
           transform: scale(1.05);
         }
 
-        /* ================= OVERLAY ================= */
         .overlay {
           position: fixed;
           inset: 0;
@@ -143,22 +145,15 @@ export default function Sidebar() {
           backdrop-filter: blur(2px);
         }
 
-        /* ================= SIDEBAR ================= */
         .sidebar {
           position: fixed;
           top: 0;
           left: 0;
           width: 240px;
           height: 100vh;
-          background: linear-gradient(
-            180deg,
-            #1b5e20,
-            #66bb6a,
-            #fdd835
-          );
+          background: linear-gradient(180deg, #1b5e20, #66bb6a, #fdd835);
           color: #fff;
           padding-top: 70px;
-
           transform: translateX(-100%);
           transition: transform 0.3s ease;
           z-index: 2000;
@@ -168,16 +163,30 @@ export default function Sidebar() {
           transform: translateX(0);
         }
 
-        /* ================= LOGO ================= */
         .logo {
           font-size: 1.5rem;
           font-weight: 700;
           text-align: center;
           margin-bottom: 40px;
           animation: fadeDown 0.4s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
         }
 
-        /* ================= NAV ================= */
+        .admin-badge {
+          font-size: 0.6rem;
+          font-weight: 600;
+          background: rgba(255, 255, 255, 0.25);
+          border: 1px solid rgba(255, 255, 255, 0.4);
+          color: #fff;
+          padding: 2px 8px;
+          border-radius: 20px;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+
         .nav-list {
           list-style: none;
           padding: 0;
@@ -211,22 +220,14 @@ export default function Sidebar() {
           transform: translateX(4px);
         }
 
-        /* ACTIVE ITEM */
         .nav-list li.active a {
           background: rgba(255, 255, 255, 0.25);
           font-weight: 700;
         }
 
-        /* ================= ANIMATION ================= */
         @keyframes fadeDown {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(-10px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </>

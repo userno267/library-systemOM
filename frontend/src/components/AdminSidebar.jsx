@@ -22,6 +22,7 @@ export default function AdminSidebar() {
         { label: "Book Management", path: "/admin/BookManagement", emoji: "📚" },
         { label: "Borrow Management", path: "/admin/ActiveBorrowManagement", emoji: "📖" },
         { label: "QR Printing", path: "/admin/QRPrinting", emoji: "🖨️" },
+        { label: "Attendance", path: "/admin/AttendanceManagement", emoji: "📋" },
       ],
     },
     {

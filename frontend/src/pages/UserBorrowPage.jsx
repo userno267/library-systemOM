@@ -2,9 +2,10 @@ import { useEffect, useState, useContext, useMemo } from "react";
 import { AuthContext } from "../context/AuthContext";
 import Sidebar from "../components/Sidebar";
 import BottomNav from "../components/BottomNav";
+import socket from "../socket";
 
 export default function UserBorrowPage() {
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
 
   const [borrows, setBorrows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -14,7 +15,6 @@ export default function UserBorrowPage() {
   const [historyPage, setHistoryPage] = useState(1);
 
   const limit = 4;
-
   const baseURL = import.meta.env.VITE_API_URL.replace(/\/$/, "");
 
   /* ===========================
@@ -43,6 +43,22 @@ export default function UserBorrowPage() {
   useEffect(() => {
     if (token) fetchBorrows();
   }, [token]);
+
+  /* ===========================
+     SOCKET
+  =========================== */
+  useEffect(() => {
+    if (!token || !user) return;
+
+    socket.auth = { token };
+    if (!socket.connected) socket.connect();
+    socket.emit("join", user.id);
+
+    const handleBorrowUpdate = () => fetchBorrows();
+    socket.on("borrowUpdate", handleBorrowUpdate);
+
+    return () => socket.off("borrowUpdate", handleBorrowUpdate);
+  }, [token, user]);
 
   /* ===========================
      RETURN BOOK
@@ -87,18 +103,59 @@ export default function UserBorrowPage() {
   const historyBorrows = filtered.filter((b) => b.returned_at);
 
   /* ===========================
-     PAGINATION LOGIC
+     PAGINATION
   =========================== */
   const paginate = (data, page) => {
     const start = (page - 1) * limit;
     return data.slice(start, start + limit);
   };
 
-  const paginatedCurrent = paginate(currentBorrows, currentPage);
-  const paginatedHistory = paginate(historyBorrows, historyPage);
-
+  const paginatedCurrent  = paginate(currentBorrows, currentPage);
+  const paginatedHistory  = paginate(historyBorrows, historyPage);
   const currentTotalPages = Math.ceil(currentBorrows.length / limit);
   const historyTotalPages = Math.ceil(historyBorrows.length / limit);
+
+  /* ===========================
+     BORROW ACTION BUTTON
+     Renders the correct button based on status
+  =========================== */
+  const BorrowActionButton = ({ borrow }) => {
+    switch (borrow.status) {
+      case "pending_borrow":
+        return (
+          <button className="btn btn-pending" disabled>
+            ⏳ Awaiting Approval
+          </button>
+        );
+
+      case "borrowed":
+        return (
+          <button
+            className="btn btn-return"
+            onClick={() => handleReturn(borrow.book_id)}
+          >
+            🔁 Return Book
+          </button>
+        );
+
+      case "pending_return":
+        return (
+          <button className="btn btn-pending" disabled>
+            ⏳ Return Pending
+          </button>
+        );
+
+      case "rejected":
+        return (
+          <button className="btn btn-rejected" disabled>
+            ✖ Rejected
+          </button>
+        );
+
+      default:
+        return null;
+    }
+  };
 
   if (loading)
     return <p style={{ textAlign: "center", marginTop: "100px" }}>Loading...</p>;
@@ -143,32 +200,17 @@ export default function UserBorrowPage() {
                   <img src={coverUrl} alt={b.title} />
                   <h3>{b.title}</h3>
                   <p>Due: {new Date(b.due_date).toLocaleDateString()}</p>
-                  <button onClick={() => handleReturn(b.book_id)}>
-                    Return Book
-                  </button>
+                  <BorrowActionButton borrow={b} />
                 </div>
               );
             })}
           </div>
 
-          {/* Pagination */}
           {currentTotalPages > 1 && (
             <div className="pagination">
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
-              >
-                ◀
-              </button>
-              <span>
-                Page {currentPage} of {currentTotalPages}
-              </span>
-              <button
-                disabled={currentPage === currentTotalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
-              >
-                ▶
-              </button>
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage((p) => p - 1)}>◀</button>
+              <span>Page {currentPage} of {currentTotalPages}</span>
+              <button disabled={currentPage === currentTotalPages} onClick={() => setCurrentPage((p) => p + 1)}>▶</button>
             </div>
           )}
         </section>
@@ -191,14 +233,8 @@ export default function UserBorrowPage() {
                 <div key={b.id} className="book-card history">
                   <img src={coverUrl} alt={b.title} />
                   <h3>{b.title}</h3>
-                  <p>
-                    Borrowed:{" "}
-                    {new Date(b.borrowed_at).toLocaleDateString()}
-                  </p>
-                  <p>
-                    Returned:{" "}
-                    {new Date(b.returned_at).toLocaleDateString()}
-                  </p>
+                  <p>Borrowed: {new Date(b.borrowed_at).toLocaleDateString()}</p>
+                  <p>Returned: {new Date(b.returned_at).toLocaleDateString()}</p>
                 </div>
               );
             })}
@@ -206,21 +242,9 @@ export default function UserBorrowPage() {
 
           {historyTotalPages > 1 && (
             <div className="pagination">
-              <button
-                disabled={historyPage === 1}
-                onClick={() => setHistoryPage((p) => p - 1)}
-              >
-                ◀
-              </button>
-              <span>
-                Page {historyPage} of {historyTotalPages}
-              </span>
-              <button
-                disabled={historyPage === historyTotalPages}
-                onClick={() => setHistoryPage((p) => p + 1)}
-              >
-                ▶
-              </button>
+              <button disabled={historyPage === 1} onClick={() => setHistoryPage((p) => p - 1)}>◀</button>
+              <span>Page {historyPage} of {historyTotalPages}</span>
+              <button disabled={historyPage === historyTotalPages} onClick={() => setHistoryPage((p) => p + 1)}>▶</button>
             </div>
           )}
         </section>
@@ -235,21 +259,10 @@ export default function UserBorrowPage() {
           min-height: 100vh;
         }
 
-        h1 {
-          text-align: center;
-          color: #2e7d32;
-          margin-bottom: 15px;
-        }
+        h1 { text-align: center; color: #2e7d32; margin-bottom: 15px; }
+        h2 { margin-top: 30px; color: #1b5e20; }
 
-        h2 {
-          margin-top: 30px;
-          color: #1b5e20;
-        }
-
-        .search-box {
-          margin-bottom: 15px;
-        }
-
+        .search-box { margin-bottom: 15px; }
         .search-box input {
           width: 100%;
           padding: 10px;
@@ -279,21 +292,46 @@ export default function UserBorrowPage() {
           border-radius: 10px;
         }
 
-        .book-card button {
+        .book-card h3 { font-size: 0.85rem; margin: 6px 0 2px; color: #1b5e20; }
+        .book-card p  { font-size: 0.78rem; color: #555; margin: 2px 0; }
+
+        .history { opacity: 0.8; }
+
+        /* ===== ACTION BUTTONS ===== */
+        .btn {
           width: 100%;
-          padding: 6px;
+          padding: 7px;
           border-radius: 8px;
           border: none;
+          font-weight: bold;
+          font-size: 0.78rem;
+          margin-top: 8px;
+          cursor: pointer;
+        }
+
+        /* Active return — red, clickable */
+        .btn-return {
           background: #c62828;
           color: white;
-          font-weight: bold;
-          margin-top: 6px;
         }
 
-        .history {
-          opacity: 0.8;
+        .btn-return:hover { background: #b71c1c; }
+
+        /* Waiting states — muted, disabled */
+        .btn-pending {
+          background: #fff9c4;
+          color: #f57f17;
+          cursor: not-allowed;
         }
 
+        /* Rejected — grey */
+        .btn-rejected {
+          background: #eeeeee;
+          color: #9e9e9e;
+          cursor: not-allowed;
+        }
+
+        /* ===== PAGINATION ===== */
         .pagination {
           margin-top: 10px;
           display: flex;
@@ -310,14 +348,9 @@ export default function UserBorrowPage() {
           color: white;
         }
 
-        .pagination button:disabled {
-          opacity: 0.4;
-        }
+        .pagination button:disabled { opacity: 0.4; }
 
-        .center {
-          text-align: center;
-          color: #777;
-        }
+        .center { text-align: center; color: #777; }
       `}</style>
     </>
   );

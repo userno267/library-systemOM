@@ -23,6 +23,9 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import { startNotificationCron } from "./cron/notificationCron.js";
 import supportChatRoutes from "./routes/supportChatRoutes.js";
 import wishlistRoutes from "./routes/wishlistRoutes.js";
+import attendanceRoutes from "./routes/Attendanceroutes.js";
+
+
 import "./cron/autoDeleteUsers.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,7 +124,8 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/support", supportChatRoutes);
 app.use("/api/wishlist", wishlistRoutes);
-
+// register (with other routes)
+app.use("/api/attendance", attendanceRoutes);
 /* ===========================
    Test DB Connection
 =========================== */

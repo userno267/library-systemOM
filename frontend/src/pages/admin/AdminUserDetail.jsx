@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AdminSidebar from "../../components/AdminSidebar";
+import QRCode from "qrcode";
 
 export default function AdminUserDetail() {
   const { id } = useParams();
@@ -12,6 +13,9 @@ export default function AdminUserDetail() {
   const [borrowHistory, setBorrowHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState(null);
+  const [qrDataUrl, setQrDataUrl] = useState(null);
+
+  const qrCanvasRef = useRef(null);
 
   useEffect(() => {
     const fetchUserDetails = async () => {
@@ -31,6 +35,14 @@ export default function AdminUserDetail() {
         if (userData.profile_image) {
           setPreview(encodeURI(`${baseURL}${userData.profile_image}`));
         }
+
+        // Generate QR on the fly — no backend needed
+        const qr = await QRCode.toDataURL(`USER:${userData.id}`, {
+          errorCorrectionLevel: "H",
+          margin: 1,
+          width: 220,
+        });
+        setQrDataUrl(qr);
 
         const resHistory = await fetch(
           `${baseURL}/api/borrows/history/${id}`,
@@ -57,6 +69,15 @@ export default function AdminUserDetail() {
 
     fetchUserDetails();
   }, [id, token, baseURL]);
+
+  // Download QR as PNG
+  const handleDownloadQR = () => {
+    if (!qrDataUrl) return;
+    const a = document.createElement("a");
+    a.href = qrDataUrl;
+    a.download = `user-qr-${user?.full_name?.replace(/\s+/g, "-") || id}.png`;
+    a.click();
+  };
 
   if (loading) {
     return (
@@ -88,7 +109,6 @@ export default function AdminUserDetail() {
 
         {/* PROFILE CARD */}
         <div className="profile-card">
-
           <img
             src={preview || "/default-avatar.png"}
             alt="profile"
@@ -113,6 +133,22 @@ export default function AdminUserDetail() {
               </p>
             </div>
           </div>
+
+          {/* QR CODE */}
+          {qrDataUrl && (
+            <div className="qr-section">
+              <p className="qr-label">📱 Student QR Code</p>
+              <img
+                src={qrDataUrl}
+                alt="User QR Code"
+                className="qr-img"
+              />
+              <p className="qr-hint">Scan at QR Borrow Station</p>
+              <button className="qr-download-btn" onClick={handleDownloadQR}>
+                ⬇ Download QR
+              </button>
+            </div>
+          )}
         </div>
 
         {/* HISTORY */}
@@ -157,7 +193,7 @@ export default function AdminUserDetail() {
         )}
       </div>
 
-      <style >{`
+      <style>{`
         .admin-main {
           margin-left: 260px;
           padding: 30px;
@@ -184,13 +220,15 @@ export default function AdminUserDetail() {
 
         .profile-card {
           display: flex;
-          gap: 20px;
+          gap: 24px;
+          align-items: flex-start;
           background: white;
           padding: 24px;
           border-radius: 12px;
           border: 1px solid #c5e1a5;
           box-shadow: 0 6px 18px rgba(0,0,0,0.06);
           margin-bottom: 25px;
+          flex-wrap: wrap;
         }
 
         .profile-pic {
@@ -199,6 +237,12 @@ export default function AdminUserDetail() {
           border-radius: 50%;
           object-fit: cover;
           border: 3px solid #2e7d32;
+          flex-shrink: 0;
+        }
+
+        .profile-info {
+          flex: 1;
+          min-width: 200px;
         }
 
         .profile-info h1 {
@@ -220,6 +264,56 @@ export default function AdminUserDetail() {
         .info-grid span {
           font-weight: 700;
           color: #4e342e;
+        }
+
+        /* QR SECTION */
+        .qr-section {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          border-left: 1px solid #e0e0e0;
+          padding-left: 24px;
+          flex-shrink: 0;
+        }
+
+        .qr-label {
+          font-weight: 700;
+          color: #2e7d32;
+          font-size: 0.85rem;
+          margin: 0;
+        }
+
+        .qr-img {
+          width: 160px;
+          height: 160px;
+          border-radius: 10px;
+          border: 2px solid #c5e1a5;
+          padding: 6px;
+          background: white;
+        }
+
+        .qr-hint {
+          font-size: 0.72rem;
+          color: #999;
+          margin: 0;
+          text-align: center;
+        }
+
+        .qr-download-btn {
+          background: #e8f5e9;
+          border: 1px solid #a5d6a7;
+          color: #2e7d32;
+          font-size: 0.78rem;
+          font-weight: 600;
+          padding: 5px 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: 0.2s;
+        }
+
+        .qr-download-btn:hover {
+          background: #c8e6c9;
         }
 
         .section-title {
@@ -257,19 +351,10 @@ export default function AdminUserDetail() {
           text-transform: capitalize;
         }
 
-        .status.returned {
-          background: #c8e6c9;
-          color: #1b5e20;
-        }
+        .status.returned { background: #c8e6c9; color: #1b5e20; }
+        .status.borrowed { background: #fff3cd; color: #6d4c41; }
 
-        .status.borrowed {
-          background: #fff3cd;
-          color: #6d4c41;
-        }
-
-        .empty {
-          color: #6d4c41;
-        }
+        .empty { color: #6d4c41; }
       `}</style>
     </>
   );
