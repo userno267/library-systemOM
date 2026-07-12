@@ -13,25 +13,30 @@ export const listUsers = async (req, res) => {
     const params = [];
 
     if (search) {
-      where += " AND (full_name LIKE ? OR email LIKE ? OR lrn LIKE ?)";
+      where += " AND (u.full_name LIKE ? OR u.email LIKE ? OR u.lrn LIKE ?)";
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     if (role) {
-      where += " AND role = ?";
+      where += " AND u.role = ?";
       params.push(role);
     }
 
     const [rows] = await pool.query(
-      `SELECT id, full_name, lrn, email, role, created_at 
-       FROM users ${where} 
-       ORDER BY id DESC 
+      `SELECT 
+         u.id, u.full_name, u.lrn, u.email, u.role, u.created_at,
+         COALESCE(SUM(CASE WHEN f.status = 'unpaid' THEN f.amount ELSE 0 END), 0) AS unpaid_fines
+       FROM users u
+       LEFT JOIN fines f ON f.user_id = u.id
+       ${where}
+       GROUP BY u.id, u.full_name, u.lrn, u.email, u.role, u.created_at
+       ORDER BY u.id DESC 
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), parseInt(offset)]
     );
 
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM users ${where}`,
+      `SELECT COUNT(*) AS total FROM users u ${where}`,
       params
     );
 

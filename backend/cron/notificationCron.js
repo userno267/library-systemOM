@@ -2,12 +2,11 @@ import cron from "node-cron";
 import db from "../db/db.js";
 
 export const startNotificationCron = (io) => {
-  // 🔹 Run daily at 8 AM
   cron.schedule("0 8 * * *", async () => {
     console.log("🔔 Running daily notification job...");
 
     try {
-      const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+      const today = new Date().toISOString().split("T")[0];
 
       // ===============================
       // 1️⃣ Due Soon (2 days window)
@@ -22,7 +21,6 @@ export const startNotificationCron = (io) => {
       );
 
       for (const borrow of dueSoon) {
-        // Check if notification already sent today
         const [exists] = await db.query(
           `SELECT 1 FROM notifications 
            WHERE related_borrow_id = ? 
@@ -31,42 +29,30 @@ export const startNotificationCron = (io) => {
           [borrow.id, today]
         );
 
-        if (exists.length > 0) continue; // already sent today
+        if (exists.length > 0) continue;
 
-        await db.query(
+        const [result] = await db.query(
           `INSERT INTO notifications
            (user_id, title, message, type, related_borrow_id)
            VALUES (?, ?, ?, 'due_soon', ?)`,
           [
             borrow.user_id,
             "Book Due Soon",
-            `Your book "${borrow.title}" is due on ${borrow.due_date}`,
+            `Your book "${borrow.title}" is due on ${new Date(borrow.due_date).toLocaleDateString()}. Please return it on time to avoid a ₱5 fine.`,
             borrow.id
           ]
         );
 
-       const [result] = await db.query(
-  `INSERT INTO notifications
-   (user_id, title, message, type, related_borrow_id)
-   VALUES (?, ?, ?, 'due_soon', ?)`,
-  [
-    borrow.user_id,
-    "Book Due Soon",
-    `Your book "${borrow.title}" is due on ${borrow.due_date}`,
-    borrow.id
-  ]
-);
+        const [rows] = await db.query(
+          `SELECT * FROM notifications WHERE id = ?`,
+          [result.insertId]
+        );
 
-const [rows] = await db.query(
-  `SELECT * FROM notifications WHERE id = ?`,
-  [result.insertId]
-);
-
-io.to(`user_${borrow.user_id}`).emit("newNotification", rows[0]);
+        io.to(`user_${borrow.user_id}`).emit("newNotification", rows[0]);
       }
 
       // ===============================
-      // 2️⃣ Overdue
+      // 2️⃣ Overdue — mark status, create fine, notify
       // ===============================
       const [overdue] = await db.query(
         `SELECT b.*, u.id AS user_id, bk.title
@@ -78,13 +64,21 @@ io.to(`user_${borrow.user_id}`).emit("newNotification", rows[0]);
       );
 
       for (const borrow of overdue) {
+
+        // update borrow status to overdue
         await db.query(
-          `UPDATE borrows SET status = 'overdue'
-           WHERE id = ?`,
+          `UPDATE borrows SET status = 'overdue' WHERE id = ?`,
           [borrow.id]
         );
 
-        // Check if overdue notification already sent today
+        // create fine if one doesn't exist yet for this borrow
+        await db.query(
+          `INSERT IGNORE INTO fines (user_id, borrow_id, amount, status)
+           VALUES (?, ?, 5.00, 'unpaid')`,
+          [borrow.user_id, borrow.id]
+        );
+
+        // check if overdue notification already sent today
         const [existsOverdue] = await db.query(
           `SELECT 1 FROM notifications 
            WHERE related_borrow_id = ? 
@@ -93,23 +87,34 @@ io.to(`user_${borrow.user_id}`).emit("newNotification", rows[0]);
           [borrow.id, today]
         );
 
-        if (existsOverdue.length > 0) continue; // already sent today
+        if (existsOverdue.length > 0) continue;
 
-        await db.query(
+        // get total unpaid fines for this user
+        const [[{ totalFine }]] = await db.query(
+          `SELECT COALESCE(SUM(amount), 0) AS totalFine
+           FROM fines
+           WHERE user_id = ? AND status = 'unpaid'`,
+          [borrow.user_id]
+        );
+
+        const [result] = await db.query(
           `INSERT INTO notifications
            (user_id, title, message, type, related_borrow_id)
            VALUES (?, ?, ?, 'overdue', ?)`,
           [
             borrow.user_id,
-            "Book Overdue",
-            `Your book "${borrow.title}" is overdue.`,
+            "Book Overdue — Borrowing Suspended",
+            `Your book "${borrow.title}" is overdue. A ₱5 fine has been added to your account. Your total unpaid fine is ₱${totalFine}. You cannot borrow books until your fine is paid. Please visit the library to settle your balance.`,
             borrow.id
           ]
         );
 
-        io.to(`user_${borrow.user_id}`).emit("newNotification", {
-          message: `Your book "${borrow.title}" is overdue!`
-        });
+        const [rows] = await db.query(
+          `SELECT * FROM notifications WHERE id = ?`,
+          [result.insertId]
+        );
+
+        io.to(`user_${borrow.user_id}`).emit("newNotification", rows[0]);
       }
 
       console.log("✅ Daily notification job complete");

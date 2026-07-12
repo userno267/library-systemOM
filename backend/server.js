@@ -25,6 +25,8 @@ import supportChatRoutes from "./routes/supportChatRoutes.js";
 import wishlistRoutes from "./routes/wishlistRoutes.js";
 import attendanceRoutes from "./routes/Attendanceroutes.js";
 
+import fineRoutes from "./routes/fineRoutes.js";
+
 
 import "./cron/autoDeleteUsers.js";
 const __filename = fileURLToPath(import.meta.url);
@@ -111,6 +113,8 @@ app.get("/api/proxy-image", (req, res) => {
 /* ===========================
    API Routes
 =========================== */
+// add with your other routes
+app.use("/api/fines", fineRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/books", bookRoutes);
 app.use("/api/genres", genreRoutes);

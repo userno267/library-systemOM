@@ -9,8 +9,11 @@ import {
   FaBars,
   FaSignOutAlt,
   FaQrcode,
+  FaReceipt,
 } from "react-icons/fa";
 import { AuthContext } from "../context/AuthContext";
+
+// add to navItems array
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false);
@@ -28,6 +31,7 @@ export default function Sidebar() {
     { path: "/UserBorrowPage", icon: <FaBook />, label: "Borrowed Books" },
     { path: "/BrowseEbooks", icon: <FaLaptop />, label: "E-books" },
     { path: "/SupportChat", icon: <FaComments />, label: "Chat Librarian" },
+    { path: "/transactions", icon: <FaReceipt />, label: "My Fines" },
     // QR Borrow is only shown to admins
     ...(isAdmin
       ? [{ path: "/qr-borrow", icon: <FaQrcode />, label: "QR Borrow Station" }]

@@ -1,7 +1,7 @@
 import { useEffect, useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 import Sidebar from "../components/Sidebar";
-import BottomNav from "../components/BottomNav";
+import BottomNav, { notificationBus } from "../components/BottomNav"; // ✅ import bus
 import socket from "../socket";
 
 export default function NotificationsPage() {
@@ -67,9 +67,10 @@ export default function NotificationsPage() {
   }, [user, token]);
 
   /* ===========================
-     TOGGLE EXPAND
+     TOGGLE EXPAND (mark single read)
   =========================== */
   const toggleExpand = async (id) => {
+    // Update local state immediately
     setNotifications((prev) =>
       prev.map((n) =>
         n.id === id ? { ...n, expanded: !n.expanded, isRead: true } : n
@@ -84,6 +85,9 @@ export default function NotificationsPage() {
           Authorization: `Bearer ${token}`,
         },
       });
+
+      // ✅ Tell BottomNav to re-fetch the real unread count
+      notificationBus.emit();
     } catch (err) {
       console.error(`Failed to mark notification ${id} as read:`, err);
     }
@@ -93,6 +97,9 @@ export default function NotificationsPage() {
      MARK ALL AS READ
   =========================== */
   const markAllAsRead = async () => {
+    // Update local state immediately
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+
     try {
       await fetch(`${baseURL}/api/notifications/read-all`, {
         method: "PATCH",
@@ -102,9 +109,8 @@ export default function NotificationsPage() {
         },
       });
 
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, isRead: true }))
-      );
+      // ✅ Tell BottomNav to re-fetch the real unread count
+      notificationBus.emit();
     } catch (err) {
       console.error("Failed to mark all as read:", err);
     }
@@ -159,7 +165,7 @@ export default function NotificationsPage() {
           min-height: 100vh;
           font-family: "Poppins", sans-serif;
           position: relative;
-          z-index: 10; /* behind sidebar */
+          z-index: 10;
         }
 
         h2 {
@@ -181,9 +187,7 @@ export default function NotificationsPage() {
           transition: background 0.2s ease;
         }
 
-        .read-all:hover {
-          background: #1b5e20;
-        }
+        .read-all:hover { background: #1b5e20; }
 
         .notification-list {
           list-style: none;
@@ -202,7 +206,7 @@ export default function NotificationsPage() {
           cursor: pointer;
           transition: all 0.2s ease, filter 0.2s ease;
           position: relative;
-          z-index: 100; /* below sidebar */
+          z-index: 100;
         }
 
         .notification-item.unread {
@@ -235,9 +239,7 @@ export default function NotificationsPage() {
         }
 
         @media (min-width: 768px) {
-          .main {
-            padding-left: 260px; /* space for sidebar */
-          }
+          .main { padding-left: 260px; }
         }
       `}</style>
     </>

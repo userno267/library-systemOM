@@ -1,7 +1,6 @@
 import db from "../db/db.js";
 import { notifyWishlistUsers } from "./wishlistController.js"; // ✅ add this
-// borrowController.js
-// borrowController.js
+
 export const borrowBook = async (req, res) => {
   const userId = req.user.id;
   const { book_id } = req.body;
@@ -10,6 +9,22 @@ export const borrowBook = async (req, res) => {
   try {
     const [[book]] = await db.query("SELECT * FROM books WHERE id = ?", [book_id]);
     if (!book) return res.status(404).json({ message: "Book not found" });
+
+    // ✅ CHECK UNPAID FINES FIRST
+    const [[{ unpaidFines }]] = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS unpaidFines
+       FROM fines
+       WHERE user_id = ? AND status = 'unpaid'`,
+      [userId]
+    );
+
+    if (unpaidFines > 0) {
+      return res.status(400).json({ 
+        message: `You have an unpaid fine of ₱${unpaidFines}. Please pay your fine before borrowing.`,
+        hasFine: true,
+        fineAmount: unpaidFines
+      });
+    }
 
     const [[active]] = await db.query(
       `SELECT * FROM borrows WHERE user_id = ? AND book_id = ? AND returned_at IS NULL`,
@@ -21,8 +36,9 @@ export const borrowBook = async (req, res) => {
       return res.status(400).json({ message: "Book out of stock" });
     }
 
+    // ✅ CHANGED FROM 7 TO 3 DAYS
     const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 7);
+    dueDate.setDate(dueDate.getDate() + 3);
 
     await db.query(
       `INSERT INTO borrows (user_id, book_id, due_date, status) 
@@ -164,7 +180,7 @@ export const adminBorrowBook = async (req, res) => {
     }
 
     const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 7);
+    dueDate.setDate(dueDate.getDate() + 3);
 
     // ✅ FIX: set status directly to 'borrowed'
     await db.query(
@@ -366,7 +382,6 @@ export const adminReturnBook = async (req, res) => {
     res.status(500).json({ message: "Return failed" });
   }
 };
-
 export const approveBorrow = async (req, res) => {
   const { borrow_id } = req.body;
   const io = req.app.get("io");
@@ -381,6 +396,22 @@ export const approveBorrow = async (req, res) => {
       return res.status(400).json({ message: "Invalid request" });
     }
 
+    // ✅ CHECK UNPAID FINES
+    const [[{ unpaidFines }]] = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS unpaidFines
+       FROM fines
+       WHERE user_id = ? AND status = 'unpaid'`,
+      [borrow.user_id]
+    );
+
+    if (unpaidFines > 0) {
+      return res.status(400).json({ 
+        message: `User has an unpaid fine of ₱${unpaidFines}. Fine must be paid before approving.`,
+        hasFine: true,
+        fineAmount: unpaidFines
+      });
+    }
+
     const [[book]] = await db.query(
       `SELECT * FROM books WHERE id=?`,
       [borrow.book_id]
@@ -390,17 +421,14 @@ export const approveBorrow = async (req, res) => {
       return res.status(400).json({ message: "Out of stock" });
     }
 
-    // update borrow
     await db.query(
       `UPDATE borrows SET status='borrowed' WHERE id=?`,
       [borrow_id]
     );
 
-    // update stock
     if (book.type === "physical") {
       const newCopies = book.copies - 1;
       const status = newCopies === 0 ? "unavailable" : "available";
-
       await db.query(
         `UPDATE books SET copies=?, status=? WHERE id=?`,
         [newCopies, status, book.id]

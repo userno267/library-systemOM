@@ -4,64 +4,79 @@ import { useEffect, useState, useContext } from "react";
 import socket from "../socket";
 import { AuthContext } from "../context/AuthContext";
 
+// =====================================================
+// Simple event bus so NotificationsPage can tell
+// BottomNav to re-fetch the unread count after reads
+// without prop drilling or a global state library
+// =====================================================
+export const notificationBus = {
+  _listeners: [],
+  on(fn) { this._listeners.push(fn); },
+  off(fn) { this._listeners = this._listeners.filter(l => l !== fn); },
+  emit() { this._listeners.forEach(fn => fn()); },
+};
+
 export default function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, token } = useContext(AuthContext);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const baseURL = import.meta.env.VITE_API_URL;
+
   const handleScanClick = () => navigate("/scan");
 
   /* ==============================
-     FETCH INITIAL UNREAD COUNT
+     FETCH REAL UNREAD COUNT
+     Called on mount + whenever
+     NotificationsPage marks reads
   ============================== */
-  useEffect(() => {
+  const fetchUnread = async () => {
     if (!user || !token) return;
-
-    const fetchUnread = async () => {
-      try {
-        const res = await fetch(
-          "https://unprogressively-noncognitive-karis.ngrok-free.dev/api/notifications/unread-count",
-          {
-            headers: {
-              "ngrok-skip-browser-warning": "true",
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        const data = await res.json();
-        if (typeof data.count === "number") {
-          setUnreadCount(data.count);
-        }
-      } catch (err) {
-        console.error("Failed to fetch unread count:", err);
+    try {
+      const res = await fetch(`${baseURL}/api/notifications/unread-count`, {
+        headers: {
+          "ngrok-skip-browser-warning": "true",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (typeof data.count === "number") {
+        setUnreadCount(data.count);
       }
-    };
+    } catch (err) {
+      console.error("Failed to fetch unread count:", err);
+    }
+  };
 
-    fetchUnread();
+  // Initial fetch
+  useEffect(() => {
+    if (user && token) fetchUnread();
   }, [user?.id, token]);
 
   /* ==============================
-     SOCKET CONNECTION
+     LISTEN TO NOTIFICATION BUS
+     NotificationsPage calls
+     notificationBus.emit() after
+     marking read — we re-fetch here
+  ============================== */
+  useEffect(() => {
+    notificationBus.on(fetchUnread);
+    return () => notificationBus.off(fetchUnread);
+  }, [user?.id, token]);
+
+  /* ==============================
+     SOCKET — increment on new
+     notification arriving
   ============================== */
   useEffect(() => {
     if (!user?.id || !token) return;
 
     socket.auth = { token };
+    if (!socket.connected) socket.connect();
 
-    if (!socket.connected) {
-      socket.connect();
-    }
-
-    const handleConnect = () => {
-      console.log("BottomNav socket connected:", socket.id);
-      socket.emit("join", user.id);
-    };
-
-    const handleNewNotification = () => {
-      setUnreadCount((prev) => prev + 1);
-    };
+    const handleConnect = () => socket.emit("join", user.id);
+    const handleNewNotification = () => setUnreadCount((prev) => prev + 1);
 
     socket.on("connect", handleConnect);
     socket.on("newNotification", handleNewNotification);
@@ -73,19 +88,10 @@ export default function BottomNav() {
   }, [user?.id, token]);
 
   /* ==============================
-     RESET BADGE WHEN OPEN PAGE
-  ============================== */
-  useEffect(() => {
-    if (location.pathname === "/Notification") {
-      setUnreadCount(0);
-    }
-  }, [location.pathname]);
-
-  /* ==============================
      NAV ITEMS
   ============================== */
   const navItems = [
-    { type: "link", href: "/", icon: <FaHome />, label: "Home" },
+    { type: "link", href: "/home", icon: <FaHome />, label: "Home" },
     { type: "link", href: "/Profile", icon: <FaUser />, label: "Profile" },
     {
       type: "link",
@@ -109,9 +115,7 @@ export default function BottomNav() {
           <Link
             key={index}
             to={item.href}
-            className={`nav-item ${
-              location.pathname === item.href ? "active" : ""
-            }`}
+            className={`nav-item ${location.pathname === item.href ? "active" : ""}`}
           >
             <div className="icon-wrapper">
               {item.icon}
@@ -144,7 +148,7 @@ export default function BottomNav() {
           padding: 0 8px;
           padding-bottom: env(safe-area-inset-bottom);
           z-index: 999;
-          overflow: visible; /* ✅ FIX */
+          overflow: visible;
         }
 
         .nav-item {
@@ -161,7 +165,7 @@ export default function BottomNav() {
           text-decoration: none;
           position: relative;
           transition: all 0.25s ease;
-          z-index: 1; /* ✅ FIX */
+          z-index: 1;
         }
 
         .nav-item svg {
@@ -172,7 +176,7 @@ export default function BottomNav() {
 
         .icon-wrapper {
           position: relative;
-          overflow: visible; /* ✅ FIX */
+          overflow: visible;
         }
 
         .badge {
@@ -187,9 +191,7 @@ export default function BottomNav() {
           font-weight: bold;
           min-width: 18px;
           text-align: center;
-          z-index: 100; /* ✅ FIX */
-
-          /* ✨ bonus polish */
+          z-index: 100;
           box-shadow: 0 0 0 2px white;
         }
 
@@ -203,9 +205,7 @@ export default function BottomNav() {
           transform: scale(1.15);
         }
 
-        .nav-item:hover {
-          color: #222;
-        }
+        .nav-item:hover { color: #222; }
       `}</style>
     </nav>
   );

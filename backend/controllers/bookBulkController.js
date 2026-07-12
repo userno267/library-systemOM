@@ -1,4 +1,5 @@
-// controllers/uploadBooksZip.js
+
+
 
 import AdmZip from "adm-zip";
 import xlsx from "xlsx";
@@ -50,6 +51,7 @@ const levenshtein = (a, b) => {
 
   return matrix[b.length][a.length];
 };
+
 const similarity = (a, b) => {
   const dist = levenshtein(a, b);
   const maxLen = Math.max(a.length, b.length);
@@ -95,36 +97,62 @@ const findBestImage = (images, title, isbn) => {
   return null;
 };
 
+/* ═════════════════════════════════════════════
+   CLEANUP — safely delete temp files
+═════════════════════════════════════════════ */
+const cleanupTempFiles = (zipPath, extractPath) => {
+  try {
+    // Delete extracted directory
+    if (extractPath && fs.existsSync(extractPath)) {
+      fs.rmSync(extractPath, { recursive: true, force: true });
+      console.log("🗑️ Deleted extracted directory:", extractPath);
+    }
+
+    // Delete ZIP file
+    if (zipPath && fs.existsSync(zipPath)) {
+      fs.unlinkSync(zipPath);
+      console.log("🗑️ Deleted ZIP file:", zipPath);
+    }
+  } catch (err) {
+    console.error("⚠️ Cleanup error:", err.message);
+    // Don't throw — cleanup failure shouldn't fail the upload
+  }
+};
+
 /* ================= MAIN ================= */
 
 export const uploadBooksZip = async (req, res) => {
+  const zipPath = req.file?.path;
+  const extractPath = zipPath?.replace(".zip", "");
+
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No ZIP uploaded" });
     }
 
-    const zipPath = req.file.path;
-    const extractPath = zipPath.replace(".zip", "");
-
     console.log("📦 ZIP:", zipPath);
 
+    // Extract
     new AdmZip(zipPath).extractAllTo(extractPath, true);
-
     console.log("📂 Extracted:", extractPath);
 
+    // Get all files recursively
     const allFiles = getAllFilesRecursive(extractPath);
 
+    // Find XLSX
     const xlsxPath = allFiles.find(f => f.endsWith(".xlsx"));
     if (!xlsxPath) {
-      return res.status(400).json({ message: "No XLSX found" });
+      cleanupTempFiles(zipPath, extractPath);
+      return res.status(400).json({ message: "No XLSX found in ZIP" });
     }
 
+    // Find images
     const images = allFiles.filter(f =>
       /\.(jpg|jpeg|png|webp)$/i.test(f)
     );
-
     console.log("🖼️ Images found:", images.length);
 
+    // Parse XLSX
     const workbook = xlsx.readFile(xlsxPath);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = xlsx.utils.sheet_to_json(sheet);
@@ -132,6 +160,7 @@ export const uploadBooksZip = async (req, res) => {
     let inserted = 0;
     let lastCover = null;
 
+    // Process each row
     for (const row of rows) {
       try {
         const {
@@ -210,11 +239,12 @@ export const uploadBooksZip = async (req, res) => {
         const bookId = result.insertId;
 
         /* ===== QR ===== */
-      const qr = await QRCode.toDataURL(`BOOK:${bookId}`, {
-  errorCorrectionLevel: "H",
-  margin: 1,
-  width: 300,
-});
+        const qr = await QRCode.toDataURL(`BOOK:${bookId}`, {
+          errorCorrectionLevel: "H",
+          margin: 1,
+          width: 300,
+        });
+        
         await db.query(
           "UPDATE books SET qr_code_text=? WHERE id=?",
           [qr, bookId]
@@ -251,14 +281,26 @@ export const uploadBooksZip = async (req, res) => {
       }
     }
 
+    // ═══════════════════════════════════════════
+    // ✅ CLEANUP BEFORE RESPONDING
+    // ═══════════════════════════════════════════
+    cleanupTempFiles(zipPath, extractPath);
+
     return res.json({
       success: true,
       inserted,
-      total: rows.length
+      total: rows.length,
+      message: `${inserted}/${rows.length} books imported successfully`
     });
 
   } catch (err) {
-    console.error(err);
+    console.error("❌ Upload error:", err.message);
+    
+    // ═══════════════════════════════════════════
+    // 🗑️ CLEANUP ON ERROR TOO
+    // ═══════════════════════════════════════════
+    cleanupTempFiles(zipPath, extractPath);
+
     return res.status(500).json({
       message: "Bulk upload failed",
       error: err.message

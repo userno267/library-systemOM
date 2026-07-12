@@ -18,6 +18,11 @@ import Profile from "./pages/Profile";
 import UserBorrowPage from "./pages/UserBorrowPage";
 import SupportChat from "./pages/user_sidechat";
 import EbookView from "./pages/EbookView";
+import Receipt from "./pages/Receipt";
+import GroupReceipt from "./pages/GroupReceipt";
+import TransactionsPage from "./pages/TransactionsPage";
+
+// inside Routes — Receipt accessible by both roles
 
 // Admin Pages
 import AddBook from "./pages/admin/AddBook";
@@ -36,16 +41,10 @@ import AdminNotifications from "./pages/admin/AdminNotifications";
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import ActiveBorrowManagement from "./pages/admin/ActiveBorrowManagement";
 import AttendanceManagement from "./pages/admin/AttendanceManagement";          
+import AdminFineManagement from "./pages/admin/AdminFineManagement";
 
-// inside admin routes:
-<Route
-  path="/admin/AttendanceManagement"
-  element={
-    <ProtectedRoute role="admin">
-      <AttendanceManagement />
-    </ProtectedRoute>
-  }
-/>
+// inside your Routes
+
 // Components
 import AiAssistant from "./components/AiAssistant";
 
@@ -192,8 +191,19 @@ export default function App() {
           )
         }
       />
-
+<Route path="/receipt/:fineId" element={<Receipt />} />
+<Route path="/receipt/group/:groupId" element={<GroupReceipt />} />
       {/* ================= STUDENT ROUTES ================= */}
+      <Route
+  path="/transactions"
+  element={
+    <ProtectedRoute role="student">
+      <StudentLayout>
+        <TransactionsPage />
+      </StudentLayout>
+    </ProtectedRoute>
+  }
+/>
       <Route
         path="/home"
         element={
@@ -287,6 +297,24 @@ export default function App() {
       />
 
       {/* ================= ADMIN ROUTES ================= */}
+
+      <Route
+  path="/admin/fines/:userId"
+  element={
+    <ProtectedRoute role="admin">
+      <AdminFineManagement />
+    </ProtectedRoute>
+  }
+/>
+// inside admin routes:
+<Route
+  path="/admin/AttendanceManagement"
+  element={
+    <ProtectedRoute role="admin">
+      <AttendanceManagement />
+    </ProtectedRoute>
+  }
+/>
       <Route
   path="/admin/AttendanceManagement"
   element={

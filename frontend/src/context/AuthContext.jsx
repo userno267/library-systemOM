@@ -2,13 +2,12 @@ import { createContext, useState, useEffect } from "react";
 
 export const AuthContext = createContext();
 
-// helper: decode JWT and check if expired
 const isTokenExpired = (token) => {
   try {
     const payload = JSON.parse(atob(token.split(".")[1]));
     return payload.exp * 1000 < Date.now();
   } catch {
-    return true; // treat malformed tokens as expired
+    return true;
   }
 };
 
@@ -25,26 +24,12 @@ export const AuthProvider = ({ children }) => {
       setUser(JSON.parse(savedUser));
       setToken(savedToken);
     } else {
-      // token is missing or expired — clear everything
       localStorage.removeItem("user");
       localStorage.removeItem("token");
     }
 
     setLoading(false);
   }, []);
-
-  // check every 60 seconds while the app is open
-  useEffect(() => {
-    if (!token) return;
-
-    const interval = setInterval(() => {
-      if (isTokenExpired(token)) {
-        logoutUser();
-      }
-    }, 60_000);
-
-    return () => clearInterval(interval);
-  }, [token]);
 
   const loginUser = (userData, userToken) => {
     setUser(userData);
