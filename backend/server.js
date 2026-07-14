@@ -26,7 +26,7 @@ import wishlistRoutes from "./routes/wishlistRoutes.js";
 import attendanceRoutes from "./routes/Attendanceroutes.js";
 
 import fineRoutes from "./routes/fineRoutes.js";
-
+import { startRecommendationCron } from "./cron/recommendationCron.js";
 
 import "./cron/autoDeleteUsers.js";
 const __filename = fileURLToPath(import.meta.url);
@@ -164,6 +164,7 @@ const io = new Server(server, {
 // Make io accessible in routes/controllers
 app.set("io", io);
 startNotificationCron(io);
+startRecommendationCron();
 /* ===========================
    Socket Events
 =========================== */
