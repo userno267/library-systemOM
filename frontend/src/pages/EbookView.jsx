@@ -14,6 +14,7 @@ export default function EbookView() {
   const [book, setBook] = useState(null);
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
 
   const token = localStorage.getItem("token");
   const baseUrl = import.meta.env.VITE_API_URL.replace(/\/$/, "");
@@ -23,9 +24,25 @@ export default function EbookView() {
     []
   );
 
+  const pageWidth = useMemo(
+    () => Math.min(window.innerWidth - 32, 900),
+    []
+  );
+
   useEffect(() => {
+    // reset view state whenever we navigate to a different book,
+    // otherwise the previous book's page number/count can linger
+    setBook(null);
+    setNumPages(null);
+    setPageNumber(1);
+    setPageInput("1");
     fetchBook();
   }, [id]);
+
+  // keep the input box in sync when page changes via the buttons
+  useEffect(() => {
+    setPageInput(String(pageNumber));
+  }, [pageNumber]);
 
   const fetchBook = async () => {
     try {
@@ -45,7 +62,25 @@ export default function EbookView() {
 
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages);
-  
+  };
+
+  const goToPage = () => {
+    const parsed = parseInt(pageInput, 10);
+    if (!numPages || isNaN(parsed)) {
+      setPageInput(String(pageNumber));
+      return;
+    }
+    const clamped = Math.min(Math.max(parsed, 1), numPages);
+    setPageNumber(clamped);
+    setPageInput(String(clamped));
+  };
+
+  const handlePageInputKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      goToPage();
+      e.target.blur();
+    }
   };
 
   if (!book) {
@@ -61,6 +96,15 @@ export default function EbookView() {
     : "/placeholder-book.png";
 
   const pdfUrl = `${baseUrl}/api/books/view/${book.id}`;
+
+  const pdfFile = {
+    url: pdfUrl,
+    httpHeaders: {
+      Authorization: `Bearer ${token}`,
+      "ngrok-skip-browser-warning": "true",
+    },
+    withCredentials: false,
+  };
 
   return (
     <>
@@ -91,25 +135,45 @@ export default function EbookView() {
             {/* PDF READER */}
             <div className="reader">
               <Document
-                file={{
-                  url: pdfUrl,
-                  httpHeaders: {
-                    Authorization: `Bearer ${token}`,
-                    "ngrok-skip-browser-warning": "true",
-                  },
-                  withCredentials: false,
-                }}
+                file={pdfFile}
                 onLoadSuccess={onDocumentLoadSuccess}
                 onLoadError={(e) => console.error("PDF error:", e)}
                 renderMode="canvas"
                 options={pdfOptions}
               >
                 <Page
+                  key={`page-${pageNumber}`}
                   pageNumber={pageNumber}
-                  width={Math.min(window.innerWidth - 32, 900)}
+                  width={pageWidth}
                   renderAnnotationLayer={false}
                   renderTextLayer={false}
                 />
+
+                {/* Preload the next couple pages off-screen so pdf.js has
+                    already fetched/parsed them by the time the user clicks
+                    Next — makes navigation feel instant. */}
+                {numPages && pageNumber + 1 <= numPages && (
+                  <div className="preload" aria-hidden="true">
+                    <Page
+                      key={`preload-${pageNumber + 1}`}
+                      pageNumber={pageNumber + 1}
+                      width={pageWidth}
+                      renderAnnotationLayer={false}
+                      renderTextLayer={false}
+                    />
+                  </div>
+                )}
+                {numPages && pageNumber + 2 <= numPages && (
+                  <div className="preload" aria-hidden="true">
+                    <Page
+                      key={`preload-${pageNumber + 2}`}
+                      pageNumber={pageNumber + 2}
+                      width={pageWidth}
+                      renderAnnotationLayer={false}
+                      renderTextLayer={false}
+                    />
+                  </div>
+                )}
               </Document>
             </div>
 
@@ -123,9 +187,21 @@ export default function EbookView() {
                   ◀ Prev
                 </button>
 
-                <span>
-                  Page {pageNumber} / {numPages}
-                </span>
+                <div className="page-jump">
+                  <span>Page</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={numPages}
+                    value={pageInput}
+                    onChange={(e) => setPageInput(e.target.value)}
+                    onKeyDown={handlePageInputKeyDown}
+                    onBlur={goToPage}
+                    aria-label="Go to page"
+                  />
+                  <span>/ {numPages}</span>
+                </div>
 
                 <button
                   onClick={() =>
@@ -203,10 +279,22 @@ export default function EbookView() {
           display: flex;
           justify-content: center;
           margin-top: 10px;
+          position: relative;
         }
 
         canvas {
           border-radius: 8px;
+        }
+
+        .preload {
+          position: absolute;
+          top: 0;
+          left: -99999px;
+          width: 0;
+          height: 0;
+          overflow: hidden;
+          opacity: 0;
+          pointer-events: none;
         }
 
         .pagination {
@@ -228,6 +316,28 @@ export default function EbookView() {
 
         .pagination button:disabled {
           background: #ccc;
+        }
+
+        .page-jump {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.85rem;
+          color: #444;
+        }
+
+        .page-jump input {
+          width: 52px;
+          text-align: center;
+          padding: 4px 6px;
+          border: 1px solid #ccc;
+          border-radius: 6px;
+          font-size: 0.85rem;
+        }
+
+        .page-jump input:focus {
+          outline: none;
+          border-color: #2e7d32;
         }
 
         .loading {

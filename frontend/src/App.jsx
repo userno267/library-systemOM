@@ -21,6 +21,8 @@ import EbookView from "./pages/EbookView";
 import Receipt from "./pages/Receipt";
 import GroupReceipt from "./pages/GroupReceipt";
 import TransactionsPage from "./pages/TransactionsPage";
+import VerifyEmail from "./pages/VerifyEmail";
+
 
 // inside Routes — Receipt accessible by both roles
 
@@ -184,6 +186,18 @@ export default function App() {
         element={
           !user ? (
             <Register />
+          ) : user.role === "admin" ? (
+            <Navigate to={getAdminRedirect()} replace />
+          ) : (
+            <Navigate to="/home" replace />
+          )
+        }
+      />
+       <Route
+        path="/verify-email"
+        element={
+          !user ? (
+            <VerifyEmail />
           ) : user.role === "admin" ? (
             <Navigate to={getAdminRedirect()} replace />
           ) : (

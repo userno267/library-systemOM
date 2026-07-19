@@ -14,12 +14,14 @@ export default function Register() {
   });
 
   const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitting(true);
 
     try {
       const res = await fetch(
@@ -33,13 +35,19 @@ export default function Register() {
 
       const data = await res.json();
 
-      if (!res.ok) return alert(data.message || "Registration failed");
+      if (!res.ok) {
+        alert(data.message || "Registration failed");
+        return;
+      }
 
-      alert(data.message || "Account created");
-      navigate("/");
+      // Registration creates an unverified account and emails a code —
+      // send them straight to the verification screen.
+      navigate(`/verify-email?email=${encodeURIComponent(form.email)}`);
     } catch (err) {
       console.error(err);
       alert("Server error. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -115,7 +123,9 @@ export default function Register() {
               <label htmlFor="showPass">Show Password</label>
             </div>
 
-            <button type="submit">Register</button>
+            <button type="submit" disabled={submitting}>
+              {submitting ? "Creating account..." : "Register"}
+            </button>
           </form>
 
           <p className="link-text">
@@ -225,6 +235,11 @@ export default function Register() {
 
         button:hover {
           background: #388e3c;
+        }
+
+        button:disabled {
+          background: #a5d6a7;
+          cursor: not-allowed;
         }
 
         .link-text {

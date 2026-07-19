@@ -24,7 +24,16 @@ export default function Login() {
 
       const data = await res.json();
 
-      if (!res.ok) return alert(data.message || "Invalid credentials");
+      if (!res.ok) {
+        // Unverified account — send them to the verify screen instead of a dead-end alert.
+        if (data.needsVerification && data.email) {
+          alert(data.message || "Please verify your email before logging in.");
+          navigate(`/verify-email?email=${encodeURIComponent(data.email)}`);
+          return;
+        }
+
+        return alert(data.message || "Invalid credentials");
+      }
 
       loginUser(data.user, data.token);
       navigate("/home");
@@ -90,7 +99,7 @@ export default function Login() {
           </form>
 
           <p className="link-text">
-            Don’t have an account? <Link to="/register">Register</Link>
+            Don't have an account? <Link to="/register">Register</Link>
           </p>
         </div>
       </div>

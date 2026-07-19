@@ -21,6 +21,19 @@ export default function AiAssistant({ apiUrl, token }) {
   const chatBodyRef = useRef(null);
   const lastPos = useRef({ x: 0, y: 0, time: 0 });
 
+  /* ================= SESSION ID (for AI conversation memory) =================
+     Persists for this tab/page-session only via sessionStorage, so context
+     resets on reload/new tab but is kept while the page stays open. */
+  const sessionIdRef = useRef(null);
+  if (!sessionIdRef.current) {
+    let existing = sessionStorage.getItem("aiChatSessionId");
+    if (!existing) {
+      existing = crypto.randomUUID();
+      sessionStorage.setItem("aiChatSessionId", existing);
+    }
+    sessionIdRef.current = existing;
+  }
+
   /* ================= INIT POSITION (RIGHT SIDE) ================= */
   useEffect(() => {
     setPosition({
@@ -129,7 +142,7 @@ export default function AiAssistant({ apiUrl, token }) {
     try {
       const res = await axios.post(
         apiUrl || "https://unprogressively-noncognitive-karis.ngrok-free.dev/api/chat",
-        { message: userText },
+        { message: userText, sessionId: sessionIdRef.current },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -179,7 +192,7 @@ export default function AiAssistant({ apiUrl, token }) {
       {open && (
         <div className="chat-box">
           <div className="chat-header">
-            <h4>AI Librarian</h4>
+            <h4>Jonathan the AI Librarian</h4>
             <button onClick={() => setOpen(false)}>✖</button>
           </div>
 

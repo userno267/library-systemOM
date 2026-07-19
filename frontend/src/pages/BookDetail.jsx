@@ -1,10 +1,60 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import Sidebar from "../components/Sidebar";
 import BottomNav from "../components/BottomNav";
 import socket from "../socket";
 
+// ─── Similar books section ────────────────────────────────────────────────────
+function SimilarBooksSkeleton() {
+  return (
+    <div className="similar-grid">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div className="similar-card similar-skel" key={i} />
+      ))}
+    </div>
+  );
+}
+
+function SimilarBooks({ books, loading }) {
+  if (loading) {
+    return (
+      <div className="similar-section">
+        <h3>You might also like</h3>
+        <SimilarBooksSkeleton />
+      </div>
+    );
+  }
+
+  if (!books.length) return null;
+
+  return (
+    <div className="similar-section">
+      <h3>You might also like</h3>
+      <div className="similar-grid">
+        {books.map((b) => {
+          const coverUrl = b.cover_image
+            ? `${import.meta.env.VITE_API_URL}${b.cover_image}`
+            : "/placeholder-book.png";
+
+          return (
+            <Link to={`/books/${b.book_id}`} className="similar-card" key={b.book_id}>
+              <img
+                src={coverUrl}
+                alt={b.title}
+                onError={(e) => (e.target.src = "/placeholder-book.png")}
+              />
+              <p className="similar-title">{b.title}</p>
+              <p className="similar-author">{b.author}</p>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function BookDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -13,6 +63,9 @@ export default function BookDetail() {
   const [loading, setLoading] = useState(false);
   const [inWishlist, setInWishlist] = useState(false);
   const [borrowStatus, setBorrowStatus] = useState(null);
+
+  const [similarBooks, setSimilarBooks] = useState([]);
+  const [loadingSimilar, setLoadingSimilar] = useState(true);
 
   const token = localStorage.getItem("token");
   const userId = token ? JSON.parse(atob(token.split(".")[1])).id : null;
@@ -60,9 +113,32 @@ export default function BookDetail() {
     }
   };
 
+  const fetchSimilarBooks = async () => {
+    setLoadingSimilar(true);
+    try {
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/recommendations/${id}/similar`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "ngrok-skip-browser-warning": "true",
+          },
+        }
+      );
+
+      setSimilarBooks(res.data.similar ?? []);
+    } catch (err) {
+      console.error("Failed to fetch similar books:", err);
+      setSimilarBooks([]);
+    } finally {
+      setLoadingSimilar(false);
+    }
+  };
+
   useEffect(() => {
     fetchBook();
     fetchWishlistStatus();
+    fetchSimilarBooks();
   }, [id]);
 
   useEffect(() => {
@@ -283,6 +359,8 @@ export default function BookDetail() {
             )}
           </div>
         </div>
+
+        <SimilarBooks books={similarBooks} loading={loadingSimilar} />
       </div>
 
       <BottomNav />
@@ -367,6 +445,79 @@ export default function BookDetail() {
   flex-wrap: wrap; /* allows tags to go to next line */
   gap: 8px; /* spacing between tags */
 }
+
+        /* ─── Similar books section ─────────────────────────────────────── */
+        .similar-section {
+          max-width: 600px;
+          margin: 30px auto 0;
+        }
+
+        .similar-section h3 {
+          text-align: center;
+          color: #2e7d32;
+          margin-bottom: 14px;
+        }
+
+        .similar-grid {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 10px;
+        }
+
+        .similar-card {
+          background: #fff;
+          border-radius: 10px;
+          padding: 6px;
+          text-align: center;
+          text-decoration: none;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+          display: block;
+        }
+
+        .similar-card img {
+          width: 100%;
+          height: 90px;
+          object-fit: cover;
+          border-radius: 8px;
+          margin-bottom: 4px;
+        }
+
+        .similar-title {
+          font-size: 0.72rem;
+          font-weight: 600;
+          color: #1b5e20;
+          margin: 2px 0 0;
+          line-height: 1.2;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
+
+        .similar-author {
+          font-size: 0.65rem;
+          color: #777;
+          margin: 2px 0 0;
+        }
+
+        .similar-skel {
+          height: 130px;
+          background: linear-gradient(90deg, #e8e8e8 25%, #f5f5f5 50%, #e8e8e8 75%);
+          background-size: 400px 100%;
+          animation: shimmer 1.4s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+          0%   { background-position: -400px 0; }
+          100% { background-position:  400px 0; }
+        }
+
+        @media (max-width: 600px) {
+          .similar-grid {
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
       `}</style>
     </>
   );

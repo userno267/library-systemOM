@@ -1,4 +1,3 @@
-
 import cron from "node-cron";
 import { spawn } from "child_process";
 import path from "path";
@@ -51,11 +50,13 @@ function runRecommenderForUser(userId) {
         }
 
         // Python returns "id" not "book_id", and "type" not "reason"
+        const now = new Date();
         const values = recommendations.map((r) => [
           userId,
           r.id,
-          r.score   ?? 0,
+          r.score ?? 0,
           mapType(r.type),
+          now, // computed_at — was missing, caused "Column count doesn't match value count"
         ]);
 
         await db.query(
@@ -64,7 +65,7 @@ function runRecommenderForUser(userId) {
            ON DUPLICATE KEY UPDATE
              score       = VALUES(score),
              reason      = VALUES(reason),
-             computed_at = NOW()`,
+             computed_at = VALUES(computed_at)`,
           [values]
         );
 
@@ -144,10 +145,32 @@ async function refreshAllRecommendations() {
   );
 }
 
-// ─── Single-user refresh (call after borrow / return) ────────────────────────
+// ─── Debounce: skip refresh if this user's cache is still fresh ─────────────
+
+const REFRESH_DEBOUNCE_MINUTES = 15;
+
+async function wasRecentlyRefreshed(userId) {
+  const [rows] = await db.query(
+    `SELECT 1 FROM recommendation_cache
+     WHERE user_id = ?
+       AND computed_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+     LIMIT 1`,
+    [userId, REFRESH_DEBOUNCE_MINUTES]
+  );
+  return rows.length > 0;
+}
+
+// ─── Single-user refresh (call after borrow / return, or on login) ──────────
 
 export async function refreshForUser(userId) {
   try {
+    if (await wasRecentlyRefreshed(userId)) {
+      console.log(
+        `[RecommendationCron] Skipping refresh for user ${userId} — cache is fresh (< ${REFRESH_DEBOUNCE_MINUTES}m old)`
+      );
+      return;
+    }
+
     const result = await runRecommenderForUser(userId);
     console.log(
       `[RecommendationCron] Refreshed ${result.count} recs for user ${userId}`
@@ -175,5 +198,3 @@ export function startRecommendationCron() {
     refreshAllRecommendations();
   }, 30_000);
 }
-
-
